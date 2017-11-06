@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+	<head>
+		<title>{{ title }} ： 展示照片</title>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+
+        {{> head}}
+
+        <style type="text/css">
+            .pause {
+                animation-play-state: paused !important;
+            }
+            .running {
+                animation-play-state: running !important;
+            }
+            .initial {
+                animation-play-state: initial !important;
+            }
+            article#gallery > figure#showroom {
+                width: 100%;
+                height: 100%;
+                background-color: white;
+                display: block;
+            }
+            article#gallery > figure#showroom > section {
+                position: absolute;
+                top: 0px;
+                left: 0px;
+                width: 100%;
+                height: 100%;
+                opacity: 0;
+                z-index: -100;
+            }
+            article#gallery > figure#showroom > section > img {
+                width: 100%;
+            }
+            article#gallery > figure#showroom > section.play {
+                animation: playAnmi 20s linear forwards 2 alternate;
+            }
+            @keyframes playAnmi {
+                0% {
+                    display: block;
+                    opacity: 0;
+                    z-index: 100;
+                }
+                1% {
+                    opacity: 0;
+                }
+                10% {
+                    opacity: 1;
+                }
+                100% {
+                    opacity: 1;
+                }
+            }
+            article#gallery > figure#showroom > figcaption {
+                top: 60px;
+                left: 30px;
+                position: fixed;
+                padding: 20px;
+                background-color: rgba(51,51,51,0.5);
+                opacity: 0;
+                overflow: hidden;
+                max-width: 0px;
+                z-index: 1000;
+            }
+            article#gallery > figure#showroom > figcaption > p {
+                color: #FFF;
+                font-family: "source-han-sans-traditional";
+                font-weight: bold;
+                font-size: 25px;
+                margin: 2px;
+            }
+            article#gallery > figure#showroom > figcaption.cap {
+                animation: capAnmi 20s linear forwards 2 alternate;
+            }
+            progress#timer {
+                color: white;
+                height: 5px;
+            }
+            div#timerArea {
+                z-index: 1000;
+                position: fixed;
+                bottom: 10px;
+                right: 30px;
+            }
+            div#timerArea > i#pauseStat {
+                color: maroon;
+                opacity: 0;
+                animation: spark 1s linear forwards infinite alternate;
+            }
+            @keyframes spark {
+                0% {
+                    display: block;
+                    opacity: 0;
+                }
+                1% {
+                    opacity: 0;
+                }
+                50% {
+                    opacity: 1;
+                }
+                100% {
+                    opacity: 1;
+                }
+            }
+            div.photoInfo {
+                position: absolute;
+                top: -35px;
+                left: 0px;
+                height: 30px;
+                font-family: "source-han-sans-traditional";
+                font-weight: normal;
+                font-size: 15px;
+                padding: 5px 5px 0px 5px;
+                background-color: rgba(51,51,51,0.5);
+                color:white;
+                overflow: hidden;
+                text-align: right;
+            }
+            div.photoInfo i {
+                padding: 3px;
+            }
+            @keyframes capAnmi {
+                0% {
+                    display: block;
+                    opacity: 0;
+                }
+                1% {
+                    opacity: 0;
+                    min-width: 0px;
+                    overflow: hidden;
+                }
+                10% {
+                    opacity: 1;
+                    max-width: 600px;
+                    min-width: 200px;
+                    overflow: visible;
+                }
+                100% {
+                    opacity: 1;
+                    max-width: 600px;
+                    min-width: 200px;
+                    overflow: visible;
+                }
+            }
+            a#proceedCapture {
+                position: fixed;
+                bottom: 30px;
+                width: 330px;
+                font-size: 20px;
+                left: 50%;
+                margin-left: -165px;
+                z-index: 2000;
+                font-family: "source-han-sans-traditional";
+                font-weight: bold;
+                opacity: 0;
+                transition: all 0.2s;
+                transition-delay: 300ms;
+            }
+            a#proceedCapture.showbutton {
+                opacity: 1;
+            }
+            a#proceedCapture i {
+                padding: 3px;
+            }
+            blockquote {
+                color: #FFF;
+                min-width: 300px;
+            }
+            blockquote > p {
+                color: #FFF;
+                font-family: "source-han-sans-traditional";
+                font-weight: normal;
+                font-size: 20px;
+                margin-left: 20px;
+            }
+        </style>
+    </head>
+    <body>
+        <article id="gallery">
+            <div id="timerArea">
+                <span id="msg"></span>
+                <i id="loadingStat" class="fa fa-cog fa-spin fa-3x fa-fw"></i>
+                <i id="pauseStat" class="fa fa-pause-circle-o fa-3x" aria-hidden="true"></i>
+                <progress id="timer" value="0" max="100"></progress>
+            </div>
+            <a class="button" href="/capture" target="_top" id="proceedCapture"><i class="fa fa-camera" aria-hidden="true"></i>按這裡和我們的專屬相框合照！</a>
+            <figure id="showroom"></figure>
+        </article>
+
+    {{> footer}}
+
+        <script>
+            anmiObj = 0;
+            clock = 0;
+            timer = null;
+            stopTimer = null;
+            pause = false;
+            repeatDirection = true;
+            picStatus = new Array();
+            totalpic = 0;
+            socket = io.connect();
+            var renderer = new marked.Renderer();
+            renderer.blockquote = function (text, level) {
+            var escapedText = text.toLowerCase().replace(/[^\w]+/g, '-');
+                return '<blockquote><i class="fa fa-quote-left fa-2x fa-pull-left fa-border" aria-hidden="true"></i>'+text+'</blockquote>';
+            }
+            socket.on("ListedPhoto", function(data) {
+                if(data.length > 0) {
+                    $("figure#showroom").empty();
+                    var caption = $("<figcaption></figcaption>");
+                    $("figure#showroom").append(caption);
+                    var log = 0;
+                    totalpic = data.length;
+                    data.sort(function(a,b) {
+                        return 0.5-Math.random();
+                    });
+                    data.forEach(function(item) {
+                        var section = $("<section></section>");
+                        var loading = $("<i class=\"fa fa-circle-o-notch fa-spin fa-3x fa-fw\"></i>");
+                        var img = $("<img/>");
+                        img.hide();
+                        section.append(loading)
+                        section.append(img);
+                        var src = item.type == 0 ? "/userphotos?name="+item.filename : "/uploadphotos?name="+item.filename;
+                        img.attr("src",src/*+"&timestamp="+moment().unix()*/);
+                        img.data("no",log);
+                        section.data("caption", item.caption);
+                        section.data("date", item.captureDate);
+                        section.data("location", item.captureLocation);
+                        section.data("email", item.email);
+                        img.on("load", function() {
+                            picStatus.push(this);
+                            if(picStatus.length >= totalpic / 2) {
+                                $("a#proceedCapture").show();
+                                $("a#proceedCapture").addClass("showbutton");
+                                picStatus.forEach(function(pic) {
+                                    if($(pic).data("no") == 0) {
+                                        $("div#timerArea").children().hide();
+                                        $("div#timerArea > progress").show();
+                                        $($(pic).parent()).addClass("play");
+                                        $("figure#showroom > figcaption").addClass("cap");
+                                    }
+                                });
+                            }
+                            $($(this).parent()).children("i").hide();
+                            $(this).show();
+                        });
+                        log++;
+                        $("figure#showroom").append(section);
+                    });
+                    $("figure#showroom > section").on("mousedown", function() {
+                        pause = true;
+                        $("div#timerArea > progress").hide();
+                        $("div#timerArea > i#pauseStat").show();
+                        $("figure#showroom > figcaption").removeClass("running");
+                        $("figure#showroom > figcaption").addClass("pause");
+                        $(this).removeClass("running");
+                        $(this).addClass("pause");
+                    });
+                    $("figure#showroom > section").on("mouseup", function() {
+                        pause = false;
+                        $("div#timerArea > progress").show();
+                        $("div#timerArea > i#pauseStat").hide();
+                        $("figure#showroom > figcaption").removeClass("pause");
+                        $("figure#showroom > figcaption").addClass("running");
+                        $(this).removeClass("pause");
+                        $(this).addClass("running");
+                    });
+                    $("figure#showroom > section").on("animationstart", function() {
+                        if($(this).hasClass("play")) {
+                            $("figure#showroom > figcaption").empty();
+                            $("figure#showroom > figcaption").addClass("cap");
+                            $("figure#showroom > figcaption").append(marked($(this).data("caption"), { renderer: renderer }));
+                            var info = $("<div></div>").addClass("photoInfo");
+                            var append = false;
+                            if($(this).data("date") != 0) {
+                                info.append("<i class=\"fa fa-calendar\" aria-hidden=\"true\"></i>");
+                                info.append(moment.unix($(this).data("date")).format("YYYY/MM/DD"));
+                                append = true;
+                            }
+                            if($(this).data("location") != "") {
+                                info.append("<i class=\"fa fa-map-marker\" aria-hidden=\"true\"></i>");
+                                info.append($(this).data("location"));
+                                append = true;
+                            }
+                            var emailreg = /^(([^<>()\[\]\\.,;:\s@"]+(\.[^<>()\[\]\\.,;:\s@"]+)*)|(".+"))@((\[[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}\.[0-9]{1,3}])|(([a-zA-Z\-0-9]+\.)+[a-zA-Z]{2,}))$/;
+                            if(emailreg.test($(this).data("email"))) {
+                                var match = emailreg.exec((this).data("email"));
+                                info.append("<i class=\"fa fa-user\" aria-hidden=\"true\"></i>");
+                                info.append(match[1]);
+                                append = true;
+                            }
+                            if(append) {
+                                $("figure#showroom > figcaption").append(info);
+                            }
+                            clock = 0;
+                            if(timer != null) clearInterval(timer);
+                            timer = setInterval(function() {
+                                var duration = 40;
+                                if(!pause) {
+                                    clock++;
+                                    var precent = clock / duration * 100;
+                                    $("progress#timer").attr("value", precent);
+                                }
+                            },1000);
+                        }
+                    });
+                    $("figure#showroom > section").on("animationiteration", function(e) {
+                        repeatDirection = false;
+                    });
+                    var test = 0;
+                    $("figure#showroom > section").on("animationend", function() {
+                        if($(this).hasClass("play")) {
+                            if(!repeatDirection) {
+                                $("figure#showroom > figcaption").removeClass("cap");
+                                $($("figure#showroom > section")[anmiObj]).removeClass("play");
+                                anmiObj = anmiObj+1 == $("figure#showroom > section").length ? 0 : anmiObj+1;
+                                clearTimeout(stopTimer);
+                                stopTimer = setTimeout(function() {
+                                    $($("figure#showroom > section")[anmiObj]).addClass("play");
+                                    repeatDirection = true;
+                                    console.log(test++);
+                                },100);
+                            }
+                        }
+                    });
+                } else {
+                    $("span#msg").show();
+                    $("span#msg").text("沒有圖片可以下載");
+                }
+            });
+            socket.on("newPhoto", function() {
+                $("a#proceedCapture").hide();
+                $("div#timerArea").children().hide();
+                $("div#timerArea > i#loadingStat").show();
+                socket.emit("getPhotoList");
+            });
+            $().ready(function() {
+                $("a#proceedCapture").hide();
+                $("div#timerArea").children().hide();
+                $("div#timerArea > i#loadingStat").show();
+                socket.emit("getPhotoList");
+            });
+        </script>
+    </body>
+</html>

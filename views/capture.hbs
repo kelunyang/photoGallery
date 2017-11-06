@@ -1,0 +1,460 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+	<head>
+		<title>{{ title }} ： 留下你的照片吧！</title>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+
+        {{> head}}
+
+        <style type="text/css">
+            article {
+                position: fixed;
+                top: 0px;
+                left: 0px;
+                width: 100%;
+                height: 100%;
+            }
+            header {
+                position: fixed;
+                display: flex;
+                top: 0px;
+                left: 0px;
+                justify-content: center;
+                align-items: center;
+                width: 100%;
+                height: 100%;
+                z-index: 100;
+            }
+            header > div#controllers {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                flex-direction: column;
+            }
+            header > div#controllers > div {
+                display: flex;
+                justify-content: center;
+                align-items: center;
+                flex-direction: row;
+            }
+            .hideObj {
+                display: none;
+            }
+            video#recordingVideo {
+                z-index: 10;
+                position: fixed;
+                top: 0px;
+                left: 0px;
+            }
+            video#recordingVideo.shotting {
+                animation: shotAnmi 0.3s linear forwards infinite alternate;
+            }
+            @keyframes shotAnmi {
+                0% {
+                    opacity: 1;
+                }
+                50% {
+                    opacity: 0.3;
+                }
+                100% {
+                    opacity: 1;
+                }
+            }
+            canvas#photo {
+                position: fixed;
+                top: 0px;
+                left: 0px;
+            }
+            div#countdownControl {
+                font-size: 25px;
+                font-family: "source-han-sans-traditional";
+                font-weight: bold;
+                color: white;
+                background-color: maroon;
+                opacity: 0.5;
+                padding: 5px;
+            }
+            div#countdownControl i {
+                padding: 3px;
+            }
+        </style>
+    </head>
+    <body>
+        <video id="recordingVideo"></video>
+        <input type="file" class="hideObj" id="localimg"/>
+        <header>
+            <div id="controllers">
+                <div id="photoControl">
+                    <button id="load"><i class="fa fa-picture-o" aria-hidden="true"></i>上傳照片</button>
+                    <button id="shot"><i class="fa fa-camera" aria-hidden="true"></i>拍攝照片</button>
+                    <button id="message" class="emButton"><i class="fa fa-commenting-o" aria-hidden="true"></i>留言給我們</button>
+                </div>
+                <div id="frameControl">
+                    <button id="previousFrame"><i class="fa fa-chevron-left" aria-hidden="true"></i>上一個相框</button>
+                    <button id="nextFrame">下一個相框<i class="fa fa-chevron-right" aria-hidden="true"></i></button>
+                </div>
+                <div id="countdownControl"><i class="fa fa-clock-o" aria-hidden="true"></i><span></span></div>
+            </div>
+        </header>
+        <article>
+            <canvas id="photo"></canvas>
+        </article>
+        <section id="messageArea">
+            <div>
+                <i class="fa fa-commenting-o" aria-hidden="true"></i>
+                <p class="tip"></p>
+                <p class="buttonArea">
+                    <button id="record"><i class="fa fa-microphone" aria-hidden="true"></i><span>開始錄音</span></button>
+                    <button id="play"><i class="fa fa-play" aria-hidden="true"></i><span>播放留言</span></button>
+                    <button id="save" class="emButton"><i class="fa fa-cloud-upload" aria-hidden="true"></i>存檔上傳</button>
+                </p>
+                <p>
+                    <label>Email：<input type="email" id="email" placeholder="請記得告訴我們你是誰喔！" required /></label>
+                    <div id="waveform"></div>
+                    <textarea id="descText"></textarea>
+                </p>
+            </div>
+        </section>
+        <section id="errorArea">
+            <div>
+                <i class="fa fa-exclamation-triangle" aria-hidden="true"></i>
+                <p id="errorMsg">&nbsp;</p>
+                <p class="buttonArea">
+                    <button id="closeError"><i class="fa fa-times-circle" aria-hidden="true"></i>關閉</button>
+                </p>
+            </div>
+        </section>
+
+        {{> footer}}
+
+        <script>
+            maxrecordtime = 5 * 60;
+            simplemde = null;
+            frame = new Image();
+            photo = new Image();
+            frameList = null;
+            frameCount = 0;
+            countdown = 10;
+            shotInterval = null;
+            recordtimer = 0;
+            recstatus = false;
+            recordInterval = null;
+            height = $( window ).height();
+            width = $( window ).width();
+            recordingready = false;
+            isPlaying = false;
+            isRecording = false;
+            recordingfile = null;
+            var colorDark = randomColor({luminosity: 'dark', format: 'rgba', count:13, alpha: 1})
+            var colorLight = randomColor({luminosity: 'light', format: 'rgba', count:13, alpha: 1})
+            var wavesurfer = WaveSurfer.create({
+                container: '#waveform',
+                waveColor: colorDark[0],
+                progressColor: colorLight[0]
+            });
+            var recorder = Object.create(WaveSurfer.Microphone);
+            recorder.init({
+                wavesurfer: wavesurfer
+            });
+            socket = io.connect();
+            fileupload = io.connect("/fileUpload");
+            ss(fileupload).on("photoSaved", function(data) {
+                var msg = "";
+                if(recordingfile == null) {
+                    setTimeout(function() {
+                        location.href = "/";
+                    },1000);
+                } else {
+                    msg = "請等待錄音發送完成...";
+                    var progress = $("section#messageArea > div > p.tip > progress");
+                    var recstream = ss.createStream();
+                    var blobrecStream = ss.createBlobReadStream(recordingfile);
+                    var recsize = 0;
+                    progress.prop("value",0);
+                    blobrecStream.on("data", function(chunk) {
+                        recsize += chunk.length;
+                        progress.prop("value",Math.floor(recsize / recordingfile.size * 100));
+                        if(recsize == chunk.length) {
+                            $("section#messageArea > div > p.tip").text("錄音發送完成！等待伺服器處理中（稍後您也會收到一封含有錄音的Email）...");
+                        }
+                    });
+                    ss(fileupload).emit("recUpload", recstream, {
+                        id: data,
+                        email: $("input#email").val(),
+                        filetype: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? "webm" : "ogg"
+                    });
+                    blobrecStream.pipe(recstream);
+                }
+                $("section#messageArea > div > p.tip").text("照片發送成功！"+msg);
+            });
+            ss(fileupload).on("recSaved", function(data) {
+                setTimeout(function() {
+                    location.href = "/";
+                },1000);
+                $("section#messageArea > div > p.tip").text("錄音發送成功！將在一秒後跳轉回到首頁");
+            });
+            socket.on("frameList", function(data) {
+                if(data.length > 0) {
+                    frameList = data.sort(function(a,b) {
+                        return 0.5 - Math.random();
+                    });
+                    frame.src = "/userphotos?name="+frameList[0].filename/*+"&timestamp="+moment().unix()*/;
+                } else {
+                    $("div#frameControl").hide();
+                    $("section#errorArea > div > p#errorMsg").text("沒有設定相框，不過你還是可以繼續拍照的");
+                    showWindow($("section#errorArea"));
+                }
+            });
+            socket.on("uploadReady", function(data) {
+                var stream = ss.createStream();
+                var progress = $("<progress></progress>").prop("max", 100);
+                $("section#recordingArea > div > p.tip").append(progress);
+                document.querySelector('canvas#photo').toBlob(function(photo) {
+                    var blobStream = ss.createBlobReadStream(photo);
+                    var size = 0;
+                    $("section#messageArea > div > p.tip").text("上傳照片中...");
+                    blobStream.on("data", function(chunk) {
+                        size += chunk.length;
+                        progress.prop("value",Math.floor(size / photo.size * 100));
+                        if(size == chunk.length) {
+                            $("section#messageArea > div > p.tip").text("照片發送完畢，等待伺服器回應（稍後您也會收到一封含有照片的Email）...");
+                        }
+                    });
+                    ss(fileupload).emit("photoUpload", stream, {
+                        id: data.id,
+                        hasRecording: recordingfile == null ? 0 : 1,
+                        caption:simplemde.value(),
+                        email: $("input#email").val()
+                    });
+                    blobStream.pipe(stream);
+                });
+            });
+            $(window).resize(function() {
+                height = $("header").outerHeight();
+                width = $("header").outerWidth();
+                $("canvas#photo").prop("width", width);
+                $("canvas#photo").prop("height", height);
+                $("video#recordingVideo").prop("width", width);
+                $("video#recordingVideo").prop("height", height);
+                photo.onload();
+            });
+            $().ready(function() {
+                closeWindow($("section"));
+                simplemde = new SimpleMDE({ 
+                    element: $("textarea#descText")[0],
+                    hideIcons: ["guide", "heading","unordered-list" ,"ordered-list", "image", "preview", "side-by-side", "fullscreen", "guide"]
+                });
+                height = $("header").outerHeight();
+                width = $("header").outerWidth();
+                $("canvas#photo").prop("width", width);
+                $("canvas#photo").prop("height", height);
+                $("video#recordingVideo").prop("width", width);
+                $("video#recordingVideo").prop("height", height);
+                $("video#recordingVideo").hide();
+                $("div#waveform").hide();
+                $("button#message").hide();
+                $("header > div#controllers > div#countdownControl").hide();
+                socket.emit("getFrames");
+                $("button#nextFrame").on("click", function() {
+                    frameCount = frameCount + 1 < frameList.length ? frameCount + 1 : 0;
+                    frame.src = "/userphotos?name="+frameList[frameCount].filename/*+"&timestamp="+moment().unix()*/;
+                });
+                $("button#previousFrame").on("click", function() {
+                    frameCount = frameCount - 1 < 0 ? frameList.length - 1 : frameCount - 1;
+                    frame.src = "/userphotos?name="+frameList[frameCount].filename/*+"&timestamp="+moment().unix()*/;
+                });
+                var constraints = { video: { width: width, height: height } }; 
+                navigator.mediaDevices.getUserMedia(constraints)
+                .then(function(mediaStream) {
+                    var video = document.querySelector('video#recordingVideo');
+                    video.srcObject = mediaStream;
+                    video.onloadedmetadata = function(e) {
+                        video.play();
+                        /*$("button#shot").off();
+                        $("button#shot").on("click", function() {
+                        });*/
+                    };
+                })
+                .catch(function(err) {
+                    $("button#shot").hide();
+                    var msg = err.constructor.name == "NavigatorUserMediaError" ? "您沒有安裝攝影機，或者是未許可給本網頁使用，不過您還是可以用上傳照片的方式套用我們的相框" : err.message;
+                    $("section#errorArea > div > p#errorMsg").text(msg);
+                    showWindow($("section#errorArea"));
+                }); // always check for errors at the end.
+                $("button#closeError").on("click", function() {
+                    closeWindow($("section#errorArea"));
+                });
+                $("button#load").on("click", function() {
+                    $("video#recordingVideo").hide();
+                    $("input#localimg").click();
+                });
+                $("button#record").on("click", function() {
+                    $("div#waveform").hide();
+                    $("section#recordingArea > div > p.tip").text("請對準麥克風，按下留言按鈕，開始留言");
+                    if(recstatus) {
+                        $("div#waveform").show();
+                        $("button#save").show();
+                        recorder.stop();
+                    } else {
+                        $("button#save").hide();
+                        recordingfile = null;
+                        var iOS = ['iPad', 'iPhone', 'iPod'].indexOf(navigator.platform) > -1;
+                        if(!iOS) {
+                            navigator.mediaDevices.getUserMedia({ audio: true }).then(stream => {
+                                recstatus = true;
+                                $("button#play").hide();
+                                recordInterval = setInterval(function() {
+                                    recordtimer++;
+                                    $("button#record > span").text(moment.utc(moment.duration(recordtimer, "seconds").asMilliseconds()).format("mm:ss"));
+                                    if(recordtimer > (maxrecordtime -1) * 60) {
+                                        $("section#messageArea > div > p.tip").text("剩下"+moment.utc(moment.duration(maxrecordtime - recordtimer, "seconds").asMilliseconds()).format("mm:ss")+"之後自動結束錄音");
+                                    }
+                                    if(recordtimer == maxrecordtime) {
+                                        if(recorder.status == "recording") {
+                                            $("button#record").click();
+                                        }
+                                    }
+                                },1000);
+                                $("button#record > i").removeClass("fa-microphone");
+                                $("button#record > i").addClass("fa-stop-circle");
+                                $("section#messageArea > div > p.tip").text("停止錄音，請按一下按鈕");
+                                const chunks = [];
+                                recorder = new MediaRecorder(stream);
+                                recorder.ondataavailable = e => {
+                                    chunks.push(e.data);
+                                    if (recorder.state == 'inactive') {
+                                        recordingfile = MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? new Blob(chunks, { type: 'audio/webm' }) : new Blob(chunks, { type: 'audio/ogg' });
+                                    }
+                                };
+                                recorder.onstop = msg => {
+                                    clearInterval(recordInterval);
+                                    recordingready = true;
+                                    recordtimer = 0;
+                                    recording = null;
+                                    recstatus = false;
+                                    $("button#record > i").removeClass("fa-stop-circle");
+                                    $("button#record > i").addClass("fa-microphone");
+                                    $("button#record > span").text("開始錄音");
+                                    wavesurfer.empty();
+                                    wavesurfer.loadBlob(recordingfile);
+                                    wavesurfer.un("ready");
+                                    wavesurfer.on("ready", function() {
+                                        $("button#play").show();
+                                        $("button#record > i").removeClass("fa-stop-circle");
+                                        $("button#record > i").addClass("fa-microphone");
+                                        $("button#record > span").text("開始留言");
+                                        $("section#messageArea > div > p.tip").text("錄音完成！，你這次錄了"+moment.utc(moment.duration(wavesurfer.getDuration(), "seconds").asMilliseconds()).format("mm 分 ss 秒")+"，確定上傳請按傳送（同時會將照片下載到你的裝置上）");
+                                    });
+                                    wavesurfer.on("finish", function() {
+                                        $("button#play > span").text("播放留言");
+                                        $("button#play > i").addClass("fa-play");
+                                        $("button#play > i").removeClass("fa-pause");
+                                        isPlaying = false;
+                                    });
+                                    wavesurfer.on("error", function(error) {
+                                        $("button#record > i").removeClass("fa-stop-circle");
+                                        $("button#record > i").addClass("fa-microphone");
+                                        $("button#record > span").text("開始留言");
+                                        $("section#messageArea > div > p.tip").text("錄音發生錯誤！");
+                                        $("section#errorArea > div > p#errorMsg").text("錄音轉換發生錯誤，錯誤："+error);
+                                        $("section#errorArea").show();
+                                    });
+                                }
+                                recorder.start();
+                                setTimeout(() => {
+                                    recorder.stop();
+                                }, maxrecordtime*1000);
+                            }).catch(error => {
+                                refreshtimer.reset();
+                                $("section#errorArea > div > p#errorMsg").text("無法啟動音訊設備，請檢查麥克風是否安裝完成，並且授權使用，錯誤："+error);
+                                showWindow($("section#errorArea"));
+                            });
+                        } else {
+                            $("section#errorArea > div > p#errorMsg").text("iOS系統不支援錄音功能，請採用文字留言");
+                            showWindow($("section#errorArea"));                                                        
+                        }
+                    }
+                });
+                $("button#message").on("click", function() {
+                    $("header > div#controllers > div").hide();
+                    $("button#play").hide();
+                    showWindow($("section#messageArea"));
+                });
+                $("button#play").on("click", function() {
+                    if(recordingready) {
+                        if(isPlaying) {
+                            $("button#play > span").text("播放留言");
+                            $("button#play > i").addClass("fa-play");
+                            $("button#play > i").removeClass("fa-pause");
+                            wavesurfer.playPause();
+                            isPlaying = false;
+                        } else {
+                            isPlaying = true;
+                            $("button#play > i").removeClass("fa-play");
+                            $("button#play > i").addClass("fa-pause");
+                            $("button#play > span").text("暫停播放");
+                            wavesurfer.play();
+                        }
+                    }
+                });
+                $("button#save").on("click", function() {
+                    if(document.querySelector("input#email").checkValidity()) {
+                        socket.emit("insertUpload");
+                    } else {
+                        $("section#messageArea > div > p.tip").text("Email必填！");
+                    }
+                });
+                $("button#shot").on("click", function() {
+                    $("video#recordingVideo").show();
+                    $("header > div#controllers > div").hide();
+                    $("header > div#controllers > div#countdownControl").show();
+                    shotInterval = setInterval(function() {
+                        if(countdown == 1) {
+                            $("video#recordingVideo").addClass("shotting");
+                        }
+                        if(countdown > 0) {
+                            $("header > div#controllers > div#countdownControl > span").text((countdown--) + "秒後自動拍照");
+                        } else if(countdown == 0) {
+                            var canvas = document.createElement("canvas");
+                            canvas.width = width;
+                            canvas.height = height;
+                            video = document.querySelector("video#recordingVideo");
+                            canvas.getContext("2d").drawImage(video, 0, 0, video.width, video.height);
+                            photo.src = canvas.toDataURL("image/png");
+                            countdown--
+                        } else if(countdown < 0) {
+                            $("video#recordingVideo").hide();
+                            $("video#recordingVideo").removeClass("shotting");
+                            $("header > div#controllers > div").show();
+                            $("header > div#controllers > div#countdownControl").hide();
+                            $("header > div#controllers > div#countdownControl > span").text((countdown--) + "秒後自動拍照，請微笑");
+                            countdown = 10;
+                            clearInterval(shotInterval);
+                        }
+                    },1000);
+                });
+                $("input#localimg").on("change", function(e) {
+                    var dataURI = URL.createObjectURL(e.target.files[0]);
+                    var img = new Image();
+                    photo.src = dataURI;
+                });
+                photo.onload = function() {
+                    var canvas = document.querySelector("canvas#photo");
+                    canvas.getContext("2d").clearRect(0, 0, width, height);
+                    if(this.src != "") {
+                        img_width = width;
+                        img_height = width * this.height / this.width;
+                        canvas.getContext("2d").drawImage(this, 0, 0, img_width, img_height);
+                        $("button#message").show();
+                    }
+                    frame_width = width;
+                    frame_height = width * frame.height / frame.width;
+                    canvas.getContext("2d").drawImage(frame, 0, 0, frame_width, frame_height);
+                }
+                frame.onload = function() {
+                    photo.onload();
+                };
+            });
+        </script>
+    </body>
+</html>

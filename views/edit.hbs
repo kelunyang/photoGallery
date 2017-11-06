@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+	<head>
+		<title>{{ title }} ： 照片編輯器</title>
+        <meta http-equiv="Content-Type" content="text/html; charset=UTF-8"/>
+
+        {{> head}}
+
+        <style type="text/css">
+            article {
+                padding-top: 100px;
+            }
+            article > div {
+                display: inline-block;
+                margin: 3px;
+            }
+            article > div > img {
+                width: 300px;
+                opacity: 0;
+                transition: all 0.5s linear;
+                transition-delay: 300ms;
+            }
+            article > div > progress {
+                opacity: 1;
+                transition: all 0.5s linear;
+                transition-delay: 300ms;
+            }
+            article > div > progress.hide {
+                opacity: 0;
+            }
+            article > div > img.show:hover {
+                opacity: 0.7;
+            }
+            article > div > img.show:active {
+                filter: grayscale(100%);
+            }
+            article > div > img.show {
+                opacity: 1;
+            }
+            footer {
+                bottom:0px;
+                height:20px;
+                width: 100%;
+                padding: 3px;
+                display: flex;
+                position: fixed;
+                justify-content: center;
+                align-items: center;
+                background-color: #FFF;
+                z-index: 1000;
+            }
+            header {
+                display: flex;
+                justify-content: space-between;
+                align-items: center;
+                position: fixed;
+                background-color: white;
+                top: 0px;
+                left: 0px;
+                width: 100%;
+                z-index: 10;
+            }
+            header>p {
+                display: flex;
+            }
+            header>p#infoArea {
+                flex-direction: column;
+            }
+            header>p#infoArea>label {
+                margin: 2px;
+            }
+            header>p#buttons {
+                flex-direction: row;
+            }
+            button, a.button {
+                font-size: 15px;
+            }
+            label, label > input {
+                font-size: 15px;
+                font-family: "source-han-sans-traditional";
+                font-weight: normal;
+                margin:5px;
+            }
+            section#editSection > div {
+                display: flex;
+                flex-direction: row;
+                align-items: center;
+                justify-content: space-around;
+                max-width: 1000px;
+            }
+            section#editSection > div > div#previewArea {
+                padding: 5px;
+            }
+            section#editSection > div > div#previewArea > img {
+                width: 400px;
+            }
+            p.buttonArea {
+                text-align: right;
+            }
+        </style>
+    </head>
+    <body>
+        <header>
+            <p id="infoArea">
+                <label>資料夾位置：<input type="text" id="dirLocation" placeholder="請輸入資料夾位置"/>（此為預設相簿在主機上的的位置，請小心更動）</label>
+                <label>事件名稱：<input type="text" id="eventName" placeholder="請輸入名稱"/></label>
+            </p>
+            <p id="buttons">
+                <a class="button" target="_blank" href="/download"><i class="fa fa-download" aria-hidden="true"></i>下載所有用戶上傳的照片</a>
+                <a class="button" target="_blank" href="/?type=0"><i class="fa fa-repeat" aria-hidden="true"></i>檢視輪播頁</a>
+                <a class="button" target="_blank" href="/?type=1"><i class="fa fa-random" aria-hidden="true"></i>檢視輪播頁（不含預設相簿）</a>
+                <button id="sendeventInfo"><i class="fa fa-cloud-upload" aria-hidden="true"></i>儲存</button>
+                <button id="refreshLocation"><i class="fa fa-refresh" aria-hidden="true"></i>重新載入</button>
+            </p>
+        </header>
+        <article></article>
+        <footer>
+            <progress value="0" max="100" id="loadingProgress"></progress><span id="progressStatus"></span>
+        </footer>
+        <section id="editSection">
+            <div>
+                <i class="fa fa-pencil" aria-hidden="true"></i>
+                <div id="previewArea">
+                    <img/>
+                </div>
+                <div id="infoArea">
+                    <label>拍攝日期：<input type="date" id="descDate" placeholder="1970-01-01 00:00"/>拍攝地點：<input type="text" placeholder="請輸入拍攝地點" id="descLocation"/></label>
+                    <textarea id="descText"></textarea>
+                    <p class="buttonArea">
+                        <label><input type="checkbox" id="isFrame" value="1">設定為相框<br/>（打勾就不會出現在相簿輪播，只在拍照時成為相框）</label><br/>
+                        <button id="sendEdit"><i class="fa fa-paper-plane" aria-hidden="true"></i>送出</button>
+                        <button id="closeEdit"><i class="fa fa-times-circle" aria-hidden="true"></i>關閉</button>
+                    </p>
+                </div>
+            </div>
+        </section>
+        <section id="errorArea">
+            <div>
+                <i class="fa fa-exclamation-triangle" aria-hidden="true"></i>
+                <p id="errorMsg">&nbsp;</p>
+                <p class="buttonArea">
+                    <button id="closeError"><i class="fa fa-times-circle" aria-hidden="true"></i>關閉</button>
+                </p>
+            </div>
+        </section>
+
+    {{> footer}}
+
+        <script>
+            simplemde = null;
+            tempimg = $("<img/>");
+            socket = io.connect();
+            socket.on("errorMsg", function(data) {
+                $("section#errorArea > div > p#errorMsg").text(JSON.parse(data.msg));
+                showWindow($("section#errorArea"));
+            });
+            socket.on("Photolist", function(data) {
+                if(data.length > 0) {
+                    $("article").empty();
+                    var loadedItem = new Array();
+                    $("progress#loadingProgress").show();
+                    $("span#progressStatus").text("載入中...共"+data.length+"張照片");
+                    data.forEach(function(item) {
+                        var flex = $("<div></div>");
+                        var img = $("<img>").attr("src","/userphotos?name="+item/*+"&timestamp="+moment().unix()*/);
+                        var progress = $("<progress></progress>");
+                        img.data("filename", item);
+                        img.on("load", function() {
+                            $(this).addClass("show");
+                            $(this).parent().children("progress").addClass("hide");
+                            loadedItem.push(true);
+                            var loadingvalue = ( 100 / data.length ) * loadedItem.length;
+                            $("progress#loadingProgress").attr("value", loadingvalue);
+                            $("span#progressStatus").text("已載入..."+loadedItem.length+"/"+data.length+"張照片，請點擊照片，編輯說明文字");
+                            if($("progress#loadingProgress").attr("value") >= 100) {
+                                $("progress#loadingProgress").hide();
+                                $("span#progressStatus").text(data.length+"張照片載入完成！請點擊照片，編輯說明文字（如果沒有加入說明文字，則不會被加入輪播）");
+                            }
+                            $(this).on("click", function() {
+                                tempimg = $(this);
+                                socket.emit("queryuserImg", {
+                                    filename: $(this).data("filename")
+                                });
+                            });
+                        });
+                        flex.append(progress);
+                        flex.append(img);
+                        $("article").append(flex);
+                    });
+                } else {
+                    $("span#progressStatus").text("資料夾中沒有照片");
+                }
+            });
+            socket.on("eventInfo", function(data) {
+                $("input#dirLocation").val(data.mainDir);
+                $("input#eventName").val(data.name);
+            });
+            socket.on("userimgInfo", function(data) {
+                var caption = data.caption == undefined ? "" : data.caption;
+                var photoid = data.id == undefined ? 0 : data.id;
+                simplemde.value(caption);
+                if(data.captureDate != 0) $("input#descDate").val(moment.unix(data.captureDate).format("YYYY-MM-DD"));
+                $("input#isFrame").prop("checked", data.type == 1);
+                $("input#descLocation").val(data.captureLocation);
+                $("textarea#descText").data("photoid", photoid);
+                $("textarea#descText").data("filename", data.filename);
+                $("div#previewArea > img").attr("src", $(tempimg).attr("src"));
+                showWindow($("section#editSection"));
+            });
+            socket.on("captionSaved", function(data) {
+                $("span#progressStatus").text("照片說明編輯完成！");
+            });
+            socket.on("eventUpdated", function(data) {
+                $("button#refreshLocation").click();
+                $("span#progressStatus").text("儲存完成！重新載入照片...");
+            });
+            $().ready(() => {
+                closeWindow($("section"));
+                $("progress#loadingProgress").hide();
+                socket.emit("listPhoto");
+                socket.emit("getInfo");
+                simplemde = new SimpleMDE({ 
+                    element: $("textarea#descText")[0],
+                    hideIcons: ["guide", "heading","unordered-list" ,"ordered-list", "image", "preview", "side-by-side", "fullscreen", "guide"]
+                });
+                $("button#refreshLocation").on("click", function() {
+                    socket.emit("listPhoto");
+                });
+                $("button#sendeventInfo").on("click", function() {
+                    socket.emit("sendeventInfo", {
+                        location: $("input#dirLocation").val(),
+                        name: $("input#eventName").val()
+                    })
+                });
+                $("button#sendEdit").on("click", function() {
+                    socket.emit("saveCaption", {
+                        id:$("textarea#descText").data("photoid"),
+                        captureDate:moment($("input#descDate").val()).unix(),
+                        captureLocation:$("input#descLocation").val(),
+                        caption: simplemde.value(),
+                        type: $("input#isFrame").prop( "checked" ) ? 1 : 0,
+                        filename:$("textarea#descText").data("filename")
+                    });
+                });
+                $("button#closeEdit").on("click", function() {
+                    $("span#progressStatus").text("");
+                    closeWindow($("section#editSection"));
+                });
+            });
+        </script>
+    </body>
+</html>

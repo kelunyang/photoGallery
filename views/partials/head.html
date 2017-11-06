@@ -1,0 +1,177 @@
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/simplemde/1.11.2/simplemde.min.css" />
+<link rel="stylesheet" type="text/css" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.7.0/css/font-awesome.min.css"/>
+<style type="text/css">
+    body {
+        font-family: "source-han-sans-traditional";
+        font-weight: normal;
+        background-color: #FFF;
+        color: #000;
+        font-size: 14px;
+        cursor: default;
+    }
+    aside {
+        font-family: Verdana, Geneva, Tahoma, sans-serif;
+        top: 100px;
+        padding: 2px;
+        position: fixed;
+        right: 10px;
+        color: rgba(153, 153, 153, 0.7);
+        writing-mode: vertical-rl;
+        text-orientation: sideways;
+        z-index: 1000;
+    }
+    aside > a > i {
+        margin-left: 3px;
+        margin-right: 3px;
+    }
+    aside > a {
+        text-indent:  5px;
+        color: rgba(153, 153, 153, 0.7);
+        text-decoration: none;
+        transition: all 0.2s;
+        transition-delay: 300ms;
+    }
+    aside > a:hover {
+        color: #F96;
+        text-decoration: underline;
+    }
+    aside > a:active {
+        color: #C03;
+        text-decoration: none;
+        transition: none;
+    }
+    h1,h2 {
+        font-family: "source-han-sans-traditional";
+        font-weight: normal;
+        text-align: left;
+        color: #000;
+        font-size: 16px;
+    }
+    h1>i, h2>i {
+        padding:3px;
+    }
+    h2 {
+        margin-top: 3px;
+        margin-bottom: 3px;
+    }
+    p {
+        font-family: "source-han-sans-traditional";
+        font-weight: normal;
+        color: #000;
+        font-size: 14px;
+        line-height: 20px;
+    }
+    strong {
+        font-family: "source-han-sans-traditional";
+        font-weight: 900;   /* 超級粗 */
+    }
+    section {
+        overflow: hidden;
+        opacity: 0;
+        display: flex;
+        position: fixed;
+        top: 0px;
+        left: 0px;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.8);
+        justify-content: center;
+        align-items: center;
+        margin: 0px;
+        padding: 0px;
+        z-index: 100;
+    }
+    section > div {
+        display: block;
+        background-color: #FFF;
+        border: 1px solid #666;
+        padding: 5px;
+        min-width: 600px;
+        max-width: 650px;
+        min-height: 300px;
+        max-height: 600px;
+        overflow: hidden;
+        position: relative;
+        cursor: default;
+    }
+    section.showWindow {
+        animation: showW 1s linear forwards;
+    }
+    section.hideWindow {
+        animation: hideW 1s linear forwards;
+    }
+    @keyframes showW {
+        0% {
+            display: flex;
+            visibility: visible;
+            opacity: 0;
+        }
+        100% {
+            opacity: 1;
+        }
+    }
+    @keyframes hideW {
+        0% {
+            opacity: 1;
+        }
+        100% {
+            display: none;
+            visibility: hidden;
+            opacity: 0;
+        }
+    }
+    p.tip {
+        text-align: center;
+    }
+    p.buttonArea {
+        padding: 1px;
+        margin: 1px;
+        text-align: center;
+    }
+    section > div > i {
+        position: absolute;
+        font-size: 160px !important;
+        top: -40px;
+        right: -40px;
+        z-index: 1;
+        opacity: 0.1;
+    }
+    button, a.button {
+        font-family: "source-han-sans-traditional";
+        font-weight: normal;
+        font-size: 30px;
+        display: inline-block;
+        width: auto;
+        margin:2px;
+        padding: 3px;
+        border: 3px solid #297ECC;
+        color: #FFF;
+        background-color: #297ECC;
+        cursor: default;
+        min-width: 50px;
+        text-align: center;
+        transition: all 0.2s;
+        transition-delay: 300ms;
+        text-decoration: none;
+    }
+    button:hover, a.button:hover {
+        border: 3px solid #FFF;
+    }
+    button:active, a.button:active {
+        background-color: #FFF;
+        color: #297ECC;
+        transition: none;
+    }
+    button > i, a.button > i {
+        padding: 2px;
+    }
+    button.emButton {
+        background-color: #600;
+        border-color: #600;
+    }
+    button.emButton:active {
+        background-color: #FFF;
+        border-color: #600;
+        color: #600;
+    }
+</style>
